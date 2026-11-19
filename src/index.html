@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net data: blob:;" />
+    <title>Sysbin Studio Code</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Monaco Editor（VS Code 同款编辑器内核）—— 本地内置，无需联网 -->
+    <script src="vendor/monaco/loader.js"></script>
+    <!-- 预注册语言包：file:// 下 AMD loader 会退化成 fetch 并被 CORS 拦截，
+         提前用 script 标签 define 出来可避免「Failed to load default language strings」 -->
+    <script src="vendor/monaco/editor/editor.main.nls.js"></script>
+    <script src="vendor/monaco/editor/editor.main.nls.zh-cn.js"></script>
+    <script>
+        // 本地资源缺失时回退到 CDN，保证极端情况下仍可启动
+        window.__monacoFallback = function () {
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
+            s.onload = function () { window.__monacoReady && window.__monacoReady(); };
+            document.head.appendChild(s);
+        };
+        if (typeof require === 'undefined' || typeof require.config !== 'function') {
+            window.__monacoFallback();
+        }
+    </script>
+</head>
+<body class="theme-dark">
+<div class="workbench" id="workbench">
+
+    <!-- ═══════ 标题栏 ═══════ -->
+    <header class="titlebar">
+        <div class="titlebar-left">
+            <div class="tb-logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 18l6-6-6-6" /><path d="M8 6l-6 6 6 6" />
+                </svg>
+            </div>
+            <span class="tb-app">Sysbin Studio Code</span>
+            <nav class="tb-menu">
+                <button class="tb-menu-item" data-menu="file">文件</button>
+                <button class="tb-menu-item" data-menu="edit">编辑</button>
+                <button class="tb-menu-item" data-menu="view">视图</button>
+                <button class="tb-menu-item" data-menu="run">运行</button>
+                <button class="tb-menu-item" data-menu="help">帮助</button>
+            </nav>
+        </div>
+        <div class="titlebar-center">
+            <button class="tb-search" id="tb-search" title="快速打开文件 (Ctrl+P)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+                <span id="tb-search-label">未打开文件夹</span>
+            </button>
+        </div>
+        <div class="titlebar-right">
+            <button class="tb-icon" id="tb-settings" title="设置">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2v.2a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.6 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00-1.2-2.9H2a2 2 0 110-4h.1A1.7 1.7 0 003.7 9a1.7 1.7 0 00-.4-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H8a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- ═══════ 主体 ═══════ -->
+    <div class="body">
+
+        <!-- 活动栏 -->
+        <aside class="activitybar">
+            <div class="ab-top">
+                <button class="ab-item active" data-view="explorer" title="资源管理器 (Ctrl+Shift+E)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+                </button>
+                <button class="ab-item" data-view="search" title="搜索 (Ctrl+Shift+F)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+                </button>
+                <button class="ab-item" data-view="outline" title="大纲 (Ctrl+Shift+O)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h13" /></svg>
+                </button>
+                <button class="ab-item" data-view="tools" title="代码工具">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 01-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 015.4-5.4l-2.3 2.3 1.8 1.8 2.3-2.3z" /></svg>
+                </button>
+                <button class="ab-item" data-view="plugins" title="插件与插件市场">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 4V2.5a1.5 1.5 0 013 0V4h1.5a1 1 0 011 1v2.2l2.7 2.7H21a1 1 0 011 1v2a1 1 0 01-1 1h-2.8l-2.7 2.7V19a1 1 0 01-1 1H7a1 1 0 01-1-1v-2.3L3.3 15a2 2 0 010-2.8L6 9.5V7a1 1 0 011-1h3z" /></svg>
+                </button>
+                <!-- AI 助手入口已移至底部「下边栏」（#ai-launch） -->
+                <!-- 插件通过 api.registerPage 在运行时在这里注入侧边栏图标 -->
+                <div class="ab-plugins" id="ab-plugins"></div>
+            </div>
+            <div class="ab-bottom">
+                <button class="ab-item" data-view="about" title="关于">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" /><path d="M12 16v-5M12 8h.01" /></svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 侧边栏 -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sb-head">
+                <span class="sb-title" id="sb-title">资源管理器</span>
+                <div class="sb-actions" id="sb-actions"></div>
+            </div>
+
+            <!-- 资源管理器 -->
+            <div class="sb-body active" id="view-explorer">
+                <div class="sb-subhead">
+                    <span class="sb-sub" id="folder-name">未打开文件夹</span>
+                    <div class="sb-actions">
+                        <button class="sb-mini" id="explorer-open" title="打开文件夹">＋</button>
+                        <button class="sb-mini" id="explorer-collapse" title="全部折叠">⤒</button>
+                    </div>
+                </div>
+                <div class="file-tree" id="file-tree">
+                    <div class="empty-state">
+                        <p>尚未打开文件夹</p>
+                        <button class="btn btn-primary btn-sm" id="explorer-open-2">打开文件夹</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 搜索 -->
+            <div class="sb-body" id="view-search">
+                <div class="search-box">
+                    <div class="search-input-row">
+                        <input id="search-input" type="text" placeholder="搜索内容" spellcheck="false" />
+                        <button class="sb-mini" id="search-toggle-case" title="区分大小写">Aa</button>
+                        <button class="sb-mini" id="search-toggle-regex" title="使用正则表达式">.*</button>
+                    </div>
+                    <div class="search-meta" id="search-meta"></div>
+                    <div class="search-results" id="search-results"></div>
+                </div>
+            </div>
+
+            <!-- 大纲 -->
+            <div class="sb-body" id="view-outline">
+                <div class="outline-list" id="outline-list">
+                    <div class="empty-state"><p>当前文件没有可显示的符号</p></div>
+                </div>
+            </div>
+
+            <!-- 代码工具 -->
+            <div class="sb-body" id="view-tools">
+                <div class="tool-group">
+                    <div class="tool-title">代码格式化</div>
+                    <button class="tool-btn" id="tool-doc">格式化文档（Monaco）</button>
+                </div>
+                <div class="tool-group">
+                    <div class="tool-title">统计</div>
+                    <button class="tool-btn" id="tool-stats">统计当前文件行数</button>
+                </div>
+                <div class="tool-group">
+                    <div class="tool-title">JSON</div>
+                    <button class="tool-btn" id="tool-json-format">格式化 JSON</button>
+                    <button class="tool-btn" id="tool-json-minify">压缩 JSON</button>
+                    <button class="tool-btn" id="tool-json-sort">按键名排序</button>
+                </div>
+                <div class="tool-group">
+                    <div class="tool-title">格式互转</div>
+                    <div class="tool-selects">
+                        <select id="convert-src"><option value="json">JSON</option><option value="yaml">YAML</option><option value="xml">XML</option></select>
+                        <span class="tool-arrow">→</span>
+                        <select id="convert-dst"><option value="yaml">YAML</option><option value="json">JSON</option><option value="xml">XML</option></select>
+                    </div>
+                    <button class="tool-btn" id="tool-convert">转换整个文档</button>
+                </div>
+            </div>
+
+            <!-- 插件与插件市场 -->
+            <div class="sb-body" id="view-plugins">
+                <div class="plug-pane">
+                    <div class="plug-tabs">
+                        <button class="plug-tab active" data-plugtab="installed">已安装<span class="plug-count" id="plug-count"></span></button>
+                        <button class="plug-tab" data-plugtab="market">插件市场</button>
+                        <div class="plug-flex"></div>
+                        <button class="sb-mini" id="plug-refresh" title="刷新当前页">↻</button>
+                    </div>
+
+                    <div class="plug-page active" id="plug-page-installed">
+                        <div class="plug-toolbar">
+                            <button class="tool-btn" id="plug-install-local">从 JS 文件安装…</button>
+                            <button class="tool-btn" id="plug-open-dir">打开插件目录</button>
+                        </div>
+                        <div class="plug-list" id="plug-list">
+                            <div class="empty-state small"><p>正在读取插件…</p></div>
+                        </div>
+                    </div>
+
+                    <div class="plug-page" id="plug-page-market">
+                        <div class="plug-toolbar">
+                            <button class="tool-btn" id="plug-market-fetch">刷新市场</button>
+                            <input class="plug-filter" id="plug-market-filter" type="text" placeholder="筛选文件名…" spellcheck="false" />
+                        </div>
+                        <div class="plug-market-url" id="plug-market-url"></div>
+                        <div class="plug-list" id="plug-market-list">
+                            <div class="empty-state small"><p>点击「刷新市场」获取插件列表</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 关于 -->
+            <div class="sb-body" id="view-about">
+                <div class="about-pane">
+                    <div class="about-head">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6" /><path d="M8 6l-6 6 6 6" /></svg>
+                        <div>
+                            <div class="about-name">Sysbin Studio Code</div>
+                            <div class="about-ver" id="about-ver">v1.0.0</div>
+                        </div>
+                    </div>
+                    <p class="about-desc">一个用 Electron 与 JavaScript 构建的轻量级代码编辑器，内置 Monaco 编辑器内核、集成终端与常用代码工具。</p>
+                    <div class="about-env" id="about-env"></div>
+                    <div class="about-links">
+                        <button class="tool-btn" id="about-userdata">打开数据目录</button>
+                        <button class="tool-btn" id="about-appdir">打开程序目录</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 编辑区 + 面板 -->
+        <main class="main-area">
+            <div class="editor-area">
+                <div class="tabs-bar" id="tabs-bar">
+                    <div class="tabs" id="tabs"></div>
+                </div>
+                <div class="breadcrumb" id="breadcrumb"></div>
+                <div class="editor-host" id="editor-host">
+                    <div id="editor" class="monaco-host"></div>
+
+                    <!-- 十六进制视图：只读浏览二进制文件，按需分块加载 -->
+                    <div id="hexview" class="hexview">
+                        <div class="hex-toolbar">
+                            <span class="hex-file" id="hex-file"></span>
+                            <button class="hex-btn" id="hex-strings" title="提取文件中的可读字符串">提取字符串</button>
+                            <button class="hex-btn" id="hex-pe" title="查看 PE 头、节区与导入表">PE 信息</button>
+                            <span class="hex-vbar"></span>
+                            <input id="hex-search" class="hex-input" type="text" placeholder="搜索文本或 hex" spellcheck="false" />
+                            <select id="hex-search-mode" class="hex-sel">
+                                <option value="text">文本</option>
+                                <option value="hex">十六进制</option>
+                            </select>
+                            <button class="hex-btn" id="hex-do-search">查找</button>
+                            <span class="hex-hits" id="hex-hits"></span>
+                            <div class="hex-flex"></div>
+                            <input id="hex-goto" class="hex-input hex-goto" type="text" placeholder="偏移" spellcheck="false" />
+                            <button class="hex-btn" id="hex-do-goto">跳转</button>
+                        </div>
+
+                        <div class="hex-body" id="hex-body">
+                            <div class="hex-total" id="hex-total"></div>
+                            <div class="hex-rows" id="hex-rows"></div>
+                        </div>
+
+                        <div class="hex-status">
+                            <span id="hex-stat-left"></span>
+                            <div class="hex-flex"></div>
+                            <span id="hex-stat-right"></span>
+                        </div>
+                    </div>
+
+                    <!-- 插件页面：插件通过 api.registerPage 注册的「设置 / 页面」，
+                         在代码区以标签页形式呈现，由 #plugin-view 承载 -->
+                    <div id="plugin-view" class="plugin-view"></div>
+
+                    <!-- 设置：作为代码区标签页呈现（与插件页面同机制），由 #settings-view 承载 -->
+                    <div id="settings-view" class="settings-view">
+                        <div class="settings-head">
+                            <span class="settings-title">设置</span>
+                            <button class="btn btn-primary btn-sm" id="settings-done">完成</button>
+                        </div>
+                        <div class="settings-body">
+                            <div class="set-group">
+                                <div class="set-group-title">外观</div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">主题</div><div class="set-desc">界面与编辑器的配色方案</div></div>
+                                    <div class="set-ctrl"><select id="set-theme"><option value="dark">深色</option><option value="light">浅色</option></select></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">强调色</div><div class="set-desc">按钮、选中项与光标高亮</div></div>
+                                    <div class="set-ctrl"><input id="set-accent" type="color" /></div>
+                                </div>
+                            </div>
+
+                            <div class="set-group">
+                                <div class="set-group-title">AI 助手</div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">接口地址</div><div class="set-desc">OpenAI 兼容接口，例如 https://api.openai.com/v1</div></div>
+                                    <div class="set-ctrl"><input id="set-ai-baseurl" type="text" placeholder="https://api.openai.com/v1" spellcheck="false" /></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">API Key</div><div class="set-desc">仅保存在本机 settings.json，不对外上传</div></div>
+                                    <div class="set-ctrl"><input id="set-ai-apikey" type="password" placeholder="sk-..." spellcheck="false" /></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">模型</div><div class="set-desc">留空则用各服务商的默认模型</div></div>
+                                    <div class="set-ctrl"><input id="set-ai-model" type="text" placeholder="gpt-4o-mini" spellcheck="false" /></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">温度</div><div class="set-desc">0 更确定、2 更发散（0 – 2）</div></div>
+                                    <div class="set-ctrl"><input id="set-ai-temp" type="number" min="0" max="2" step="0.1" value="0.7" /></div>
+                                </div>
+                            </div>
+
+                            <div class="set-group">
+                                <div class="set-group-title">编辑器</div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">字号</div><div class="set-desc">代码编辑区字体大小（12 – 22 px）</div></div>
+                                    <div class="set-ctrl"><input id="set-fontsize" type="number" min="12" max="22" step="1" /></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">字体</div><div class="set-desc">等宽字体族</div></div>
+                                    <div class="set-ctrl"><input id="set-fontfamily" type="text" placeholder="'JetBrains Mono', Consolas, monospace" /></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">制表符宽度</div><div class="set-desc">一个 Tab 相当于几个空格</div></div>
+                                    <div class="set-ctrl"><select id="set-tabsize"><option value="2">2</option><option value="4">4</option><option value="8">8</option></select></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">行号</div><div class="set-desc">显示或隐藏行号</div></div>
+                                    <div class="set-ctrl"><label class="switch"><input type="checkbox" id="set-linenumbers" /><span class="slider"></span></label></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">自动换行</div><div class="set-desc">长行按编辑区宽度折行显示</div></div>
+                                    <div class="set-ctrl"><label class="switch"><input type="checkbox" id="set-wordwrap" /><span class="slider"></span></label></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">缩略图</div><div class="set-desc">编辑器右侧的代码缩略图（minimap）</div></div>
+                                    <div class="set-ctrl"><label class="switch"><input type="checkbox" id="set-minimap" /><span class="slider"></span></label></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">自动保存</div><div class="set-desc">编辑停止 1 秒后自动写入磁盘</div></div>
+                                    <div class="set-ctrl"><label class="switch"><input type="checkbox" id="set-autosave" /><span class="slider"></span></label></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">括号着色</div><div class="set-desc">成对括号使用不同颜色标识</div></div>
+                                    <div class="set-ctrl"><label class="switch"><input type="checkbox" id="set-bracketcolor" /><span class="slider"></span></label></div>
+                                </div>
+                            </div>
+
+                            <div class="set-group">
+                                <div class="set-group-title">终端</div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">默认工作目录</div><div class="set-desc">新终端会话的起始目录，留空则使用工作区</div></div>
+                                    <div class="set-ctrl"><div class="ctrl-inline"><input id="set-shellcwd" type="text" placeholder="留空 = 工作区 / 用户目录" /><button class="btn btn-outline btn-sm" id="set-shellcwd-pick">选择…</button></div></div>
+                                </div>
+                            </div>
+
+                            <div class="set-group">
+                                <div class="set-group-title">Python 内核</div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">当前解释器</div><div class="set-desc" id="set-py-current">读取中…</div></div>
+                                    <div class="set-ctrl"><button class="btn btn-outline btn-sm" id="set-py-detect">重新探测</button></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">手动指定路径</div><div class="set-desc">留空则优先使用随包内置的 Python</div></div>
+                                    <div class="set-ctrl"><div class="ctrl-inline"><input id="set-py-path" type="text" placeholder="例如 C:\Python313\python.exe" /><button class="btn btn-outline btn-sm" id="set-py-test">测试</button></div></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">配置文件</div><div class="set-desc" id="set-file-path">读取中…</div></div>
+                                    <div class="set-ctrl"><div class="ctrl-inline"><button class="btn btn-outline btn-sm" id="set-open-file">打开</button><button class="btn btn-outline btn-sm" id="set-open-dir">所在目录</button></div></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="set-info"><div class="set-name">恢复默认设置</div><div class="set-desc">清空本机保存的全部偏好设置</div></div>
+                                    <div class="set-ctrl"><button class="btn btn-outline btn-sm" id="set-reset">恢复默认</button></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-foot"><span id="set-status">就绪</span></div>
+                    </div>
+
+                    <div class="welcome" id="welcome">
+                        <div class="welcome-inner">
+                            <div class="welcome-logo">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6" /><path d="M8 6l-6 6 6 6" /></svg>
+                            </div>
+                            <h2>Sysbin Studio Code</h2>
+                            <p class="welcome-sub">轻量 · 离线可用 · 内置终端</p>
+                            <div class="welcome-actions">
+                                <button class="welcome-link" id="w-open-file"><kbd>Ctrl</kbd><kbd>O</kbd><span>打开文件</span></button>
+                                <button class="welcome-link" id="w-open-folder"><kbd>Ctrl</kbd><kbd>K</kbd><kbd>O</kbd><span>打开文件夹</span></button>
+                                <button class="welcome-link" id="w-new-file"><kbd>Ctrl</kbd><kbd>N</kbd><span>新建文件</span></button>
+                                <button class="welcome-link" id="w-terminal"><kbd>Ctrl</kbd><kbd>`</kbd><span>切换终端</span></button>
+                            </div>
+                            <div class="welcome-recent" id="welcome-recent"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="minimap-hidden" id="find-widget-host"></div>
+            </div>
+
+            <!-- 底部面板 -->
+            <div class="panel" id="panel">
+                <div class="panel-resizer" id="panel-resizer"></div>
+                <div class="panel-head">
+                    <div class="panel-tabs">
+                        <button class="ptab active" data-panel="terminal">终端</button>
+                        <button class="ptab" data-panel="problems">问题<span class="badge-count" id="badge-problems"></span></button>
+                        <button class="ptab" data-panel="output">输出</button>
+                        <div class="panel-spacer"></div>
+                        <button class="ptab-x" id="panel-close" title="关闭面板">✕</button>
+                    </div>
+                </div>
+
+                <div class="panel-body">
+                    <!-- 终端 -->
+                    <div class="pview active" id="panel-terminal">
+                        <div class="terminal" id="terminal"></div>
+                        <div class="term-input-row">
+                            <span class="term-prompt" id="term-prompt">PS&gt;</span>
+                            <input id="terminal-input" type="text" spellcheck="false" autocomplete="off" placeholder="输入命令，回车执行（↑↓ 翻历史记录）" />
+                        </div>
+                    </div>
+                    <!-- 问题 -->
+                    <div class="pview" id="panel-problems">
+                        <div class="problems-list" id="problems-list">
+                            <div class="empty-state small"><p>没有检测到问题</p></div>
+                        </div>
+                    </div>
+                    <!-- 输出 -->
+                    <div class="pview" id="panel-output">
+                        <div class="terminal output" id="output-log"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 右侧栏：AI 助手（从左侧活动栏移出，停靠右侧；入口在底部「下边栏」） -->
+        <aside class="sidebar-right hidden" id="sidebar-right">
+            <div class="sb-head">
+                <span class="sb-title" id="rs-title">AI 助手</span>
+                <div class="sb-actions"><button class="sb-mini" id="ai-close" title="关闭面板">✕</button></div>
+            </div>
+            <div class="sb-body active" id="view-ai"></div>
+        </aside>
+    </div>
+
+    <!-- ═══════ 下边栏 ═══════ -->
+    <footer class="bottombar" id="bottombar">
+        <button class="bb-item" id="ai-launch" title="AI 助手 (Ctrl+Shift+A)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.8 3.6L17.4 8.4 13.8 10.2 12 14l-1.8-3.8L6.6 8.4l3.6-1.8z" /><path d="M18.5 13l.9 1.8 1.9.9-1.9 1-1 .8.2-2.1z" /><path d="M5.5 13l-.2 2.1 1 .8 1.9-1 .9-1.8L6.6 13.9z" /></svg>
+            <span>AI 助手</span>
+        </button>
+        <div class="bb-flex"></div>
+    </footer>
+
+    <!-- ═══════ 状态栏 ═══════ -->
+    <footer class="statusbar">
+        <div class="sb-left">
+            <button class="sb-item" id="st-branch" title="工作区">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="10" r="2.5" /><path d="M6 8.5v7M8.5 6H15a3 3 0 010 6h-3" /></svg>
+                <span id="st-folder">无文件夹</span>
+            </button>
+            <button class="sb-item" id="st-problems">✕ 0 &nbsp; ⚠ 0</button>
+        </div>
+        <div class="sb-right">
+            <button class="sb-item" id="st-pos">行 1，列 1</button>
+            <button class="sb-item" id="st-indent">空格: 4</button>
+            <button class="sb-item" id="st-encoding">UTF-8</button>
+            <button class="sb-item" id="st-eol">CRLF</button>
+            <button class="sb-item" id="st-lang">纯文本</button>
+            <button class="sb-item" id="st-terminal" title="切换终端 (Ctrl+`)">⌨ 终端</button>
+        </div>
+    </footer>
+</div>
+
+<!-- ═══════ 命令面板 / 快速打开 ═══════ -->
+<div class="overlay" id="overlay">
+    <div class="palette" id="palette">
+        <div class="palette-input-row">
+            <span class="palette-prefix" id="palette-prefix">&gt;</span>
+            <input id="palette-input" type="text" spellcheck="false" autocomplete="off" placeholder="输入命令…" />
+        </div>
+        <div class="palette-list" id="palette-list"></div>
+        <div class="palette-hint" id="palette-hint"></div>
+    </div>
+</div>
+
+<!-- ═══════ 菜单弹出层 ═══════ -->
+<div class="menu-pop" id="menu-pop"></div>
+
+<!-- ═══════ 输入框弹窗 ═══════ -->
+<div class="modal-mask" id="input-mask">
+    <div class="modal small" id="input-modal">
+        <div class="modal-head"><span id="input-title">输入</span><button class="modal-x" id="input-close">✕</button></div>
+        <div class="modal-body">
+            <div class="set-row">
+                <div class="set-info"><div class="set-name" id="input-label">名称</div><div class="set-desc" id="input-desc"></div></div>
+            </div>
+            <input class="input-full" id="input-value" type="text" spellcheck="false" />
+        </div>
+        <div class="modal-foot right">
+            <button class="btn btn-outline btn-sm" id="input-cancel">取消</button>
+            <button class="btn btn-primary btn-sm" id="input-ok">确定</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════ 上下文菜单 ═══════ -->
+<div class="ctx-menu" id="ctx-menu"></div>
+
+<!-- ═══════ 提示条 ═══════ -->
+<div class="toasts" id="toasts"></div>
+
+<!-- 渲染层：按依赖顺序加载，共享同一份全局作用域（state / el / API） -->
+<script src="renderer/core.js"></script>
+<script src="renderer/tabs.js"></script>
+<script src="renderer/hexview.js"></script>
+<script src="renderer/editor-io.js"></script>
+<script src="renderer/explorer.js"></script>
+<script src="renderer/search.js"></script>
+<script src="renderer/outline.js"></script>
+<script src="renderer/terminal.js"></script>
+<script src="renderer/palette.js"></script>
+<script src="renderer/menus.js"></script>
+<script src="renderer/views.js"></script>
+<script src="renderer/about.js"></script>
+<script src="renderer/recent.js"></script>
+<script src="renderer/tools.js"></script>
+<script src="renderer/shortcuts.js"></script>
+<script src="renderer/monaco.js"></script>
+<script src="renderer/plugins.js"></script>
+<script src="renderer/ai.js"></script>
+<script src="renderer/boot.js"></script>
+</body>
+</html>

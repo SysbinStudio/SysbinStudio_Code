@@ -1,0 +1,6 @@
+python313.zip
+.
+Lib\site-packages
+
+# 启用 site 模块，让 Lib\site-packages 下的第三方包（PyYAML）可被导入
+import site

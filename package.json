@@ -1,0 +1,90 @@
+{
+  "name": "sysbin-studio-code",
+  "productName": "Sysbin Studio Code",
+  "version": "2.0.3",
+  "description": "Sysbin Studio Code — 基于 Electron 与 JavaScript 的轻量级代码编辑器",
+  "main": "main.js",
+  "author": "SysbinStudio",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "set SYSBIN_DEBUG=1 && electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win portable nsis"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.sysbin.studiocode",
+    "productName": "Sysbin Studio Code",
+    "icon": "build/icon.ico",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "kernel.py",
+      "src/**",
+      "python/**",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "kernel.py",
+      "python/**"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-${platform}.${ext}"
+    },
+    "fileAssociations": [
+      {
+        "ext": "js",
+        "name": "JavaScript 文件",
+        "role": "editor"
+      },
+      {
+        "ext": "ts",
+        "name": "TypeScript 文件",
+        "role": "editor"
+      },
+      {
+        "ext": "json",
+        "name": "JSON 文件",
+        "role": "editor"
+      },
+      {
+        "ext": "md",
+        "name": "Markdown 文件",
+        "role": "editor"
+      },
+      {
+        "ext": "py",
+        "name": "Python 文件",
+        "role": "editor"
+      },
+      {
+        "ext": "txt",
+        "name": "文本文档",
+        "role": "editor"
+      }
+    ],
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Sysbin Studio Code"
+    }
+  }
+}
