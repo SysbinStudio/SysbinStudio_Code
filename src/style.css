@@ -166,7 +166,9 @@ input, select, textarea { font-family: inherit; font-size: inherit; color: inher
     display: flex; align-items: center; justify-content: space-between;
     padding: 4px 8px 4px 12px; flex-shrink: 0;
 }
-.sb-sub { font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: var(--fg-0); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-sub { font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: var(--fg-0); text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 文件夹名保持原样，不再被强制大写 */
+#folder-name { text-transform: none; letter-spacing: 0; }
 
 /* 文件树 */
 .file-tree { flex: 1; overflow: auto; padding-bottom: 12px; }
@@ -810,6 +812,54 @@ kbd {
     background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border);
     border-radius: 4px;
 }
+
+/* ── 允许完全访问 开关 ── */
+.ai-full-access {
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+    padding: 6px 10px 8px; border-bottom: 1px solid var(--border-soft);
+}
+.ai-fa-toggle {
+    align-self: flex-start; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg-3); color: var(--fg-1); transition: filter .12s;
+}
+.ai-fa-toggle:hover { filter: brightness(1.1); }
+.ai-fa-toggle.on {
+    background: var(--err); color: #fff; border-color: var(--err); font-weight: 600;
+}
+.ai-fa-hint { font-size: 11.5px; color: var(--err); line-height: 1.4; }
+.ai-fa-hint:empty { display: none; }
+
+/* ── Agent 工具卡片 ── */
+.ai-tool-card {
+    display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+    border: 1px solid var(--border-soft); border-left: 3px solid var(--accent);
+    border-radius: 6px; background: var(--bg-1); font-size: 12px;
+}
+.ai-tool-card[data-state="confirm"] { border-left-color: #e0a63a; }
+.ai-tool-card[data-state="ok"] { border-left-color: var(--ok); }
+.ai-tool-card[data-state="err"], .ai-tool-card[data-state="denied"] { border-left-color: var(--err); }
+.ai-tool-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ai-tool-title { font-weight: 600; color: var(--fg-0); }
+.ai-tool-status { font-size: 11px; color: var(--fg-2); }
+.ai-tool-card[data-state="err"] .ai-tool-status, .ai-tool-card[data-state="denied"] .ai-tool-status { color: var(--err); }
+.ai-tool-card[data-state="ok"] .ai-tool-status { color: var(--ok); }
+.ai-tool-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ai-tool-arg { color: var(--fg-1); font-family: var(--mono, monospace); font-size: 11.5px; word-break: break-all; }
+.ai-tool-meta { color: var(--fg-2); font-size: 11px; word-break: break-all; }
+.ai-tool-cmdlabel { color: var(--fg-2); font-size: 11px; }
+.ai-tool-cmd {
+    width: 100%; padding: 6px 8px; font-size: 12px; font-family: var(--mono, monospace);
+    background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border); border-radius: 4px;
+}
+.ai-tool-diff, .ai-tool-out {
+    margin: 0; padding: 8px; max-height: 220px; overflow: auto;
+    background: var(--bg-0); border: 1px solid var(--border-soft); border-radius: 4px;
+    font-family: var(--mono, monospace); font-size: 11.5px; line-height: 1.5; white-space: pre;
+    color: var(--fg-1);
+}
+.ai-tool-diff { tab-size: 4; }
+.ai-tool-actions { display: flex; gap: 8px; margin-top: 2px; }
 
 /* ════════ 插件页面 / 侧边栏图标 ════════ */
 .ab-plugins { display: flex; flex-direction: column; gap: 2px; align-items: center; margin-top: 6px; width: 100%; }

@@ -21,6 +21,16 @@ const AI_SYS_PROMPT = '你是 Sysbin Studio Code 内置的编程助手。'
     + '若无法判断文件名，可在代码首行用注释写明，如 // file: utils.js。'
     + '同时简要说明改了什么。不要编造文件系统中不存在的路径。';
 
+/* Agent 模式系统提示：强调工具用法与「写/执行需用户确认」 */
+const AI_AGENT_SYS_PROMPT = '你是 Sysbin Studio Code 内置的编程 Agent，具备读写文件与执行命令的能力。'
+    + '请用简体中文回答，并善用提供的工具而不是凭空猜测：'
+    + '1. 需要查看文件内容时用 read_file，需要了解项目结构用 list_dir；'
+    + '2. 需要修改或新建文件时用 write_file 直接写入完整内容（用户会在界面上看到 diff 并确认）；'
+    + '3. 需要运行测试、构建、查看版本时用 run_command；'
+    + '4. 只读查询与常见构建命令会自动放行，其它命令需用户确认，请据此合理安排；'
+    + '5. 路径可写绝对路径或相对工作区根目录；不要编造不存在的文件；'
+    + '6. 任务完成后用简短中文说明你做了什么、改了哪些文件。';
+
 const aiState = {
     built: false,
     messages: [],        // [{ role:'user'|'assistant', content }]
@@ -30,7 +40,10 @@ const aiState = {
     streaming: false,
     reqId: '',
     streamEl: null,
-    blocks: []            // 识别出的代码块 [{ lang, code, file }]
+    blocks: [],           // 识别出的代码块 [{ lang, code, file }]
+    toolCards: new Map(), // 当前工具卡片（只保留最新一个）
+    activeToolCallId: '',  // 当前显示的工具调用 id；旧事件被忽略
+    allowFullAccess: false // 完全访问：跳过写入/命令的二次确认（仍有绝对命令黑名单兜底）
 };
 
 /* settings.ai 落点，确保永远有对象可用 */
@@ -53,6 +66,11 @@ function renderAI() {
             <div class="ai-wrap">
                 <div class="ai-cfg-note">AI 接口（地址 / Key / 模型 / 温度）请在「设置 → AI 助手」中填写，填好后直接提问，或让它帮你改写文件即可。</div>
 
+                <div class="ai-full-access" id="ai-full-access">
+                    <button type="button" class="ai-fa-toggle" id="ai-fa-toggle">🔓 允许完全访问 (Allow Full Access)</button>
+                    <span class="ai-fa-hint" id="ai-fa-hint"></span>
+                </div>
+
                 <div class="ai-msgs" id="ai-msgs">
                     <div class="ai-empty">在「设置 → AI 助手」填写接口后，直接问 AI 关于代码的问题，或让它帮你改写文件。</div>
                 </div>
@@ -63,6 +81,8 @@ function renderAI() {
                     <span class="ai-ref-hint" id="ai-ref-hint"></span>
                     <label class="ai-auto"><input type="checkbox" id="ai-auto" /> 自动写入</label>
                 </div>
+
+                <div class="ai-tool-slot" id="ai-tool-slot"></div>
 
                 <div class="ai-input-row">
                     <textarea id="ai-input" placeholder="问 AI 任何关于代码的问题…（Enter 发送，Shift+Enter 换行）" spellcheck="false"></textarea>
@@ -79,10 +99,34 @@ function renderAI() {
         aiBind(box);
         aiState.built = true;
     }
+    aiSyncFullAccessUI();
     aiRefreshTargets();
 }
 
+/* 同步「允许完全访问」开关的视觉状态与危险提示 */
+function aiSyncFullAccessUI() {
+    const btn = $('ai-fa-toggle');
+    const hint = $('ai-fa-hint');
+    if (!btn) return;
+    btn.classList.toggle('on', aiState.allowFullAccess);
+    btn.textContent = aiState.allowFullAccess
+        ? '🔴 完全访问已开启 (Full Access ON)' : '🔓 允许完全访问 (Allow Full Access)';
+    if (hint) {
+        hint.textContent = aiState.allowFullAccess
+            ? '已开启免确认模式，AI 将自动执行写入和命令' : '';
+    }
+}
+
 function aiBind(box) {
+    const fa = $('ai-fa-toggle');
+    if (fa) fa.addEventListener('click', () => {
+        aiState.allowFullAccess = !aiState.allowFullAccess;
+        aiSyncFullAccessUI();
+        toast(aiState.allowFullAccess
+            ? '⚠ 已开启完全访问：AI 写入与命令不再弹窗确认'
+            : '已关闭完全访问：恢复二次确认',
+            aiState.allowFullAccess ? 'warn' : 'info', 3000);
+    });
     const attach = $('ai-attach');
     attach.addEventListener('change', () => { aiState.includeContext = attach.checked; });
     $('ai-auto').addEventListener('change', e => { aiState.autoApply = e.target.checked; });
@@ -228,7 +272,11 @@ async function aiSend() {
     if (ap0) { ap0.style.display = 'none'; ap0.innerHTML = ''; }
     aiState.blocks = [];
 
-    const messages = [{ role: 'system', content: AI_SYS_PROMPT }];
+    const isAgent = cfg.agent !== false;
+    const messages = [{ role: 'system', content: isAgent ? AI_AGENT_SYS_PROMPT : AI_SYS_PROMPT }];
+    if (isAgent && state.root) {
+        messages.push({ role: 'system', content: '工作区根目录：' + state.root });
+    }
     if (aiState.includeContext) {
         const ref = await aiResolveRef();
         if (ref && ref.content != null) {
@@ -242,16 +290,29 @@ async function aiSend() {
     aiState.streamEl = bubble;
     aiState.streaming = true;
     aiState.reqId = aiNextReq();
+    aiState.toolCards.clear();
+    aiState.activeToolCallId = '';
+    const slot0 = $('ai-tool-slot');
+    if (slot0) slot0.textContent = '';
     aiShowStop(true);
 
-    API.aiChat({
+    const basePayload = {
         baseURL: cfg.baseURL,
         apiKey: cfg.apiKey,
         model: cfg.model || 'gpt-4o-mini',
         temperature: (typeof cfg.temperature === 'number') ? cfg.temperature : 0.7,
         messages,
         requestId: aiState.reqId
-    }).then(res => {
+    };
+    const call = isAgent
+        ? API.aiAgent(Object.assign({}, basePayload, {
+            root: state.root || '',
+            maxRounds: cfg.rounds || 8,
+            allowFullAccess: aiState.allowFullAccess
+        }))
+        : API.aiChat(basePayload);
+
+    call.then(res => {
         if (!res) return;
         if (res.ok && !res.streamed && res.content != null) {
             /* 服务端未走 SSE（返回普通 JSON）：主进程把完整内容经 IPC 带回，
@@ -505,7 +566,202 @@ function aiRewriteCurrent() {
     toast('已载入当前文件作为上下文，发送即可让 AI 改写', 'info', 2600);
 }
 
-/* 流式事件在脚本加载时就注册，保证 token 不会丢 */
+/* ─────────── Agent 工具卡片 ───────────
+   主进程每步工具调用发来 ai-tool 事件，这里把过程渲染成卡片；
+   遇到 confirm 阶段渲染「允许 / 拒绝」，把用户决定回传给主进程。 */
+
+const AI_TOOL_LABEL = {
+    read_file: '📖 读取文件',
+    list_dir: '📁 列出目录',
+    write_file: '✍️ 写入文件',
+    run_command: '⌨️ 执行命令'
+};
+
+function aiToolArgSummary(name, args) {
+    if (name === 'read_file' || name === 'list_dir') return args && args.path ? args.path : '（工作区根）';
+    if (name === 'write_file') return args && args.path ? args.path : '（未指定路径）';
+    if (name === 'run_command') return args && args.command ? args.command : '（空命令）';
+    return '';
+}
+
+function aiMakeToolCard(d) {
+    /* 工具卡片只在固定的「工具槽」里显示，且永远只保留最新一个：
+       每次新建都清空旧卡片（不可恢复），不往对话流里堆。 */
+    const box = $('ai-tool-slot');
+    if (!box) return null;
+    box.textContent = '';
+    aiState.toolCards.clear();
+    const card = document.createElement('div');
+    card.className = 'ai-tool-card';
+    card.dataset.state = 'running';
+    const head = document.createElement('div');
+    head.className = 'ai-tool-head';
+    const title = document.createElement('span');
+    title.className = 'ai-tool-title';
+    title.textContent = AI_TOOL_LABEL[d.name] || ('🔧 ' + d.name);
+    const status = document.createElement('span');
+    status.className = 'ai-tool-status';
+    status.textContent = '执行中…';
+    head.appendChild(title); head.appendChild(status);
+    const body = document.createElement('div');
+    body.className = 'ai-tool-body';
+    const arg = document.createElement('div');
+    arg.className = 'ai-tool-arg';
+    arg.textContent = aiToolArgSummary(d.name, d.args);
+    body.appendChild(arg);
+    card.appendChild(head); card.appendChild(body);
+    box.appendChild(card);
+    aiScroll();
+    return card;
+}
+
+function aiSetToolStatus(card, text, state) {
+    if (!card) return;
+    const s = card.querySelector('.ai-tool-status');
+    if (s) s.textContent = text;
+    if (state) { card.dataset.state = state; }
+}
+
+function aiToolShowConfirm(card, d) {
+    if (!card) return;
+    const body = card.querySelector('.ai-tool-body');
+    if (!body) return;
+    body.textContent = '';
+    const pv = d.preview || {};
+
+    if (d.name === 'write_file') {
+        const meta = document.createElement('div');
+        meta.className = 'ai-tool-meta';
+        meta.textContent = (pv.exists ? '将覆盖：' : '将新建：') + (pv.path || '');
+        body.appendChild(meta);
+        const pre = document.createElement('pre');
+        pre.className = 'ai-tool-diff';
+        pre.textContent = pv.diff || '';
+        body.appendChild(pre);
+    } else if (d.name === 'run_command') {
+        const meta = document.createElement('div');
+        meta.className = 'ai-tool-meta';
+        meta.textContent = '工作目录：' + (pv.cwd || '（工作区根）');
+        body.appendChild(meta);
+        const label = document.createElement('div');
+        label.className = 'ai-tool-cmdlabel';
+        label.textContent = '命令（可直接修改后运行）：';
+        body.appendChild(label);
+        const cmd = document.createElement('input');
+        cmd.type = 'text';
+        cmd.className = 'ai-tool-cmd';
+        cmd.value = pv.command || (d.args && d.args.command) || '';
+        cmd.spellcheck = false;
+        body.appendChild(cmd);
+        card.__cmdInput = cmd;
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'ai-tool-actions';
+    const approve = document.createElement('button');
+    approve.className = 'btn btn-primary btn-sm';
+    approve.textContent = (d.name === 'run_command') ? '运行 Run' : '允许写入 Accept';
+    const deny = document.createElement('button');
+    deny.className = 'btn btn-outline btn-sm';
+    deny.textContent = '拒绝';
+    actions.appendChild(approve); actions.appendChild(deny);
+    body.appendChild(actions);
+
+    const decide = (ok) => {
+        if (card.dataset.state !== 'confirm') return;
+        const edited = (d.name === 'run_command' && card.__cmdInput) ? card.__cmdInput.value : '';
+        API.aiToolDecision({ confirmId: d.confirmId, approve: ok, edited: edited });
+        aiSetToolStatus(card, ok ? '已允许' : '已拒绝', ok ? 'approved' : 'denied');
+        actions.remove();
+        if (card.__cmdInput) card.__cmdInput.disabled = true;
+    };
+    approve.addEventListener('click', () => decide(true));
+    deny.addEventListener('click', () => decide(false));
+
+    aiSetToolStatus(card, '待确认', 'confirm');
+    aiScroll();
+}
+
+function aiToolShowResult(card, d) {
+    if (!card) return;
+    const body = card.querySelector('.ai-tool-body');
+    const r = d.result || {};
+    if (d.phase === 'denied') {
+        aiSetToolStatus(card, '已拒绝', 'denied');
+        return;
+    }
+    const ok = d.ok !== false && r.ok !== false;
+    let detail = '';
+    if (d.name === 'read_file') detail = '读取 ' + (r.size || 0) + ' 字节' + (r.truncated ? '（已截断）' : '');
+    else if (d.name === 'list_dir') detail = '列出 ' + ((r.items || []).length) + ' 项' + (r.truncated ? '（已截断）' : '');
+    else if (d.name === 'write_file') detail = ok ? ('已写入 ' + (r.bytes || 0) + ' 字节') : (r.error || '写入失败');
+    else if (d.name === 'run_command') detail = '退出码 ' + r.code + (r.timeout ? '（超时）' : '');
+    aiSetToolStatus(card, (ok ? '✓ ' : '✗ ') + detail, ok ? 'ok' : 'err');
+
+    /* 命令输出摘要（成功时显示 stdout / stderr 前若干行） */
+    if (d.name === 'run_command' && body) {
+        const out = (r.stdout || '') + (r.stderr ? '\n[stderr]\n' + r.stderr : '');
+        if (out.trim()) {
+            const pre = document.createElement('pre');
+            pre.className = 'ai-tool-out';
+            pre.textContent = out.length > 2000 ? out.slice(0, 2000) + '\n…(已截断)' : out;
+            body.appendChild(pre);
+            aiScroll();
+        }
+    }
+}
+
+function aiHandleTool(d) {
+    if (!d || d.requestId !== aiState.reqId) return;
+    if (d.phase === 'done') return;   // 最终答案走 ai-done
+    /* 新的工具调用：切换「当前卡片」并清掉上一张（不可恢复） */
+    if (d.phase === 'call') {
+        aiState.activeToolCallId = d.callId;
+        const card = aiMakeToolCard(d);
+        if (card) aiState.toolCards.set(d.callId, card);
+        return;
+    }
+    /* confirm / result / denied：只更新当前卡片；已被新调用顶掉的旧事件直接忽略 */
+    if (d.callId !== aiState.activeToolCallId) return;
+    const card = aiState.toolCards.get(d.callId);
+    if (!card) return;
+    if (d.phase === 'confirm') aiToolShowConfirm(card, d);
+    else if (d.phase === 'result' || d.phase === 'denied') aiToolShowResult(card, d);
+}
+
+/* Agent 写文件后：刷新已打开的标签模型，避免编辑器显示旧内容 */
+function aiHandleFileWritten(d) {
+    if (!d || !d.path) return;
+    const t = state.tabs.find(x => x.path === d.path);
+    if (t && t.model) {
+        API.readFile(d.path).then(r => {
+            if (r && r.ok && t.model.getValue() !== r.content) {
+                t.model.setValue(r.content);
+                renderTabs();
+            }
+        }).catch(() => {});
+    } else if (state.root) {
+        renderTree();
+    }
+}
+
+/* 绝对安全黑名单命中：主进程硬拒绝后推来的警告 */
+function aiHandleBlocked(d) {
+    if (!d || d.requestId !== aiState.reqId) return;
+    const label = {
+        catastrophic: '危险命令被拦截',
+        traversal: '路径穿越风险被拦截',
+        'not-allowed': '命令不在白名单内，已拒绝'
+    }[d.kind] || '命令被安全策略拦截';
+    const why = d.why || '违反安全策略';
+    toast('⛔ ' + label + '：' + why + '\n' + (d.command || ''), 'err', 6500);
+    try { logOut('[AI 安全] ' + label + '：' + (d.command || '') + ' —— ' + why, 'err'); } catch (e) {}
+}
+
+/* 流式事件与工具事件在脚本加载时就注册，保证不丢 */
 API.onAiToken(d => aiHandleToken(d));
 API.onAiDone(d => aiHandleDone(d));
+API.onAiTool(d => aiHandleTool(d));
+API.onAiFileWritten(d => aiHandleFileWritten(d));
+API.onAiBlocked(d => aiHandleBlocked(d));
 

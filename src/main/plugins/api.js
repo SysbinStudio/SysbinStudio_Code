@@ -172,6 +172,14 @@ function createApi(opts) {
             log(`已注册页面 ${id}/${def.id}`, 'info');
             return def.id;
         },
+        /* 更新一个已注册页面的内容（html/title/icon），并刷新已打开的标签页。
+           不会重复登记页面列表——配置变更后面板要显示最新值时用它。 */
+        updatePage(opts) {
+            if (!opts || !opts.id) return false;
+            const def = Object.assign({ pluginId: id }, opts);
+            ctx.send('plugin-message', { pluginId: id, channel: 'page:update', payload: def });
+            return true;
+        },
         openPage(ref) {
             if (!ref) return false;
             const payload = (typeof ref === 'string') ? { pluginId: id, pageId: ref } : Object.assign({ pluginId: id }, ref);

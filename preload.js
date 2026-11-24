@@ -99,8 +99,13 @@ contextBridge.exposeInMainWorld('sysbin', {
 
     /* AI 助手：把对话请求转发到主进程（绕开 CSP），支持流式回传 */
     aiChat: (payload) => ipcRenderer.invoke('ai-chat', payload),
+    aiAgent: (payload) => ipcRenderer.invoke('ai-agent', payload),
     aiAbort: (requestId) => ipcRenderer.send('ai-chat-abort', requestId),
     aiWriteFile: (payload) => ipcRenderer.invoke('ai-write-file', payload),
     onAiToken: (cb) => ipcRenderer.on('ai-token', (e, d) => cb(d)),
-    onAiDone: (cb) => ipcRenderer.on('ai-done', (e, d) => cb(d))
+    onAiDone: (cb) => ipcRenderer.on('ai-done', (e, d) => cb(d)),
+    onAiTool: (cb) => ipcRenderer.on('ai-tool', (e, d) => cb(d)),
+    onAiFileWritten: (cb) => ipcRenderer.on('ai-file-written', (e, d) => cb(d)),
+    onAiBlocked: (cb) => ipcRenderer.on('ai-blocked', (e, d) => cb(d)),
+    aiToolDecision: (d) => ipcRenderer.send('ai-tool-decision', d)
 });

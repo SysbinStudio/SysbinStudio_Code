@@ -293,6 +293,32 @@ function registerPluginPage(payload) {
     rebuildPluginIcons();
 }
 
+/* 插件改了页面内容（如设置面板的值变化）后推送更新：
+   同步已注册定义（下次打开用新 HTML），并刷新当前已打开的该插件标签。 */
+function updatePluginPage(payload) {
+    const def = payload || {};
+    if (!def.id || !def.pluginId) return;
+    const key = def.pluginId + ':' + def.id;
+    const prev = pluginPages.get(key);
+    pluginPages.set(key, {
+        pluginId: def.pluginId, pageId: def.id,
+        title: def.title || (prev && prev.title) || def.id,
+        icon: def.icon || (prev && prev.icon) || '◈',
+        html: def.html || ''
+    });
+    const tab = state.tabs.find(t => t.kind === 'plugin' && t.pluginKey === key);
+    if (tab) {
+        tab.html = def.html || '';
+        tab.name = def.title || tab.name;
+        if (activeTab() === tab) {
+            const pv = $('plugin-view');
+            if (pv) pv.innerHTML = tab.html;
+            el.stPos.textContent = tab.name || '';
+            renderTabs();
+        }
+    }
+}
+
 function unregisterPluginPages(pluginId) {
     if (!pluginId) return;
     const prefix = pluginId + ':';
@@ -539,6 +565,15 @@ function bindPlugins() {
         pv.addEventListener('input', e => {
             const node = e.target.closest && e.target.closest('[data-bind]');
             if (!node) return;
+            /* 通用增强：同一行里带 data-val-for 的显示元素跟随更新（滑块数值等） */
+            const row = node.closest('.row');
+            if (row) {
+                const disp = row.querySelector('[data-val-for]');
+                if (disp && disp.dataset.valFor === node.dataset.bind) {
+                    disp.textContent = (node.type === 'checkbox' || node.type === 'radio')
+                        ? (node.checked ? '开' : '关') : node.value;
+                }
+            }
             const tab = findActivePluginTab();
             if (!tab) return;
             /* 复选框用 checked，其余用 value */
@@ -666,6 +701,7 @@ function handlePluginMessage(d) {
     else if (ch === 'input:ask') handleInputAsk(payload);
     /* 插件页面：注册 / 打开 / 注销 */
     else if (ch === 'page:register') registerPluginPage(payload);
+    else if (ch === 'page:update') updatePluginPage(payload);
     else if (ch === 'page:open') {
         const pid = payload.pluginId, pgid = payload.pageId || payload.id;
         if (pid && pgid) openPluginPage(pid, pgid);

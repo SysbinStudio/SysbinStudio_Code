@@ -3,3 +3,13 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
+*.zip
+.workbuddy/
+# 打包用的 Python 运行时（二进制，体积大且平台相关）
+python/*.pyd
+python/*.dll
+python/*.exe
+python/*.cat
+python/Lib/site-packages/**/*.pyd
+# 含明文 GitHub Token 的旧上传脚本，禁止入库
+GHA.py

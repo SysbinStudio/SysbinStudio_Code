@@ -125,6 +125,15 @@ function bindWelcome() {
 function bindExplorer() {
     $('explorer-open').addEventListener('click', openFolder);
     $('explorer-collapse').addEventListener('click', collapseAll);
+    const nf = $('explorer-newfile'), nd = $('explorer-newfolder');
+    if (nf) nf.addEventListener('click', () => {
+        if (!state.root) { toast('请先打开文件夹', 'warn'); return; }
+        createInDir(state.root, false);
+    });
+    if (nd) nd.addEventListener('click', () => {
+        if (!state.root) { toast('请先打开文件夹', 'warn'); return; }
+        createInDir(state.root, true);
+    });
 }
 
 function bindTools() {

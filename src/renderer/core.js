@@ -102,7 +102,7 @@ const DEFAULT_SETTINGS = {
     shellCwd: '',
     pythonPath: '',
     recent: [],
-    ai: { baseURL: '', apiKey: '', model: '', temperature: 0.7 }
+    ai: { baseURL: '', apiKey: '', model: '', temperature: 0.7, agent: true, rounds: 8 }
 };
 
 /* ─────────── DOM 引用 ─────────── */
